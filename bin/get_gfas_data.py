@@ -102,12 +102,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
     COMMAND_LINE: argparse.Namespace = parse_command_line()
 
-    START_DATE: datetime.date = COMMAND_LINE.month
-    END_DATE: datetime.date = START_DATE + datetime.timedelta(
-        days=calendar.monthrange(START_DATE.year, START_DATE.month)[1] - 1
-    )
 
-    CDS_DATE_STRING: str = f"{START_DATE}/{END_DATE}"
     CDS_DATA_FIELDS: list[str] = [
         "altitude_of_plume_top",
         "altitude_of_plume_bottom",
@@ -159,6 +154,7 @@ if __name__ == "__main__":
         "wildfire_radiative_power",
     ]
 
+
     try:
         CDS_CLIENT: cdsapi.Client = cdsapi.Client()
     except Exception as exception:
@@ -170,21 +166,30 @@ if __name__ == "__main__":
 
         raise RuntimeError(error_message) from exception
 
-    try:
-        CDS_CLIENT.retrieve(
-            "cams-global-fire-emissions-gfas",
-            {
-                "date": CDS_DATE_STRING,
-                "format": "netcdf",
-                "variable": CDS_DATA_FIELDS,
-            },
-            os.path.join(
-                COMMAND_LINE.output_directory[0],
-                f"GFAS_RAW_{START_DATE.year}_{str(START_DATE.month).zfill(2)}.nc",
-            ),
-        )
-    except Exception as exception:
-        error_message: str = (
-            "There was a problem retrieving data from the CDS API"
-        )
-        raise RuntimeError(error_message) from exception
+    START_DATE: datetime.date = COMMAND_LINE.month
+    END_DATE: datetime.date = START_DATE + datetime.timedelta(
+        days=calendar.monthrange(START_DATE.year, START_DATE.month)[1] - 1
+    )
+    
+    for day in range(START_DATE.day, END_DATE.day + 1):
+        TEMP_DATE = START_DATE + datetime.timedelta(days=day - 1)
+        CDS_DATE_STRING: str = f"{TEMP_DATE}/{TEMP_DATE}"
+    
+        try:
+            CDS_CLIENT.retrieve(
+                "cams-global-fire-emissions-gfas",
+                {
+                    "date": CDS_DATE_STRING,
+                    "format": "netcdf",
+                    "variable": CDS_DATA_FIELDS,
+                },
+                os.path.join(
+                    COMMAND_LINE.output_directory[0],
+                    f"GFAS_RAW_{TEMP_DATE.year}_{str(TEMP_DATE.month).zfill(2)}_{str(TEMP_DATE.day).zfill(2)}.nc",
+                ),
+            )
+        except Exception as exception:
+            error_message: str = (
+                "There was a problem retrieving data from the CDS API"
+            )
+            raise RuntimeError(error_message) from exception
