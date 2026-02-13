@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """=============================================================================
-Download GFAS biomass burning data for a single month.
+Download GFAS biomass burning data for a single day.
 
-Download a month's worth of GFAS biomass burning data from ECMWF CDS. All data
-fields are downloaded into a single NetCDF file named GFAS_RAW_YYYY_MM.nc. This
+Download a day's worth of GFAS biomass burning data from ECMWF CDS. All data
+fields are downloaded into a single NetCDF file named GFAS_RAW_YYYY_MM_DD.nc. This
 script is intended to be the first part of a Download => Preprocess => Transfer
 pipeline from ECMWF CDS to GCST.
 ============================================================================="""
@@ -12,6 +12,9 @@ import calendar
 import datetime
 import logging
 import os
+import glob
+import xarray as xr
+
 
 import cdsapi
 
@@ -170,9 +173,10 @@ if __name__ == "__main__":
     END_DATE: datetime.date = START_DATE + datetime.timedelta(
         days=calendar.monthrange(START_DATE.year, START_DATE.month)[1] - 1
     )
-    
+
     for day in range(START_DATE.day, END_DATE.day + 1):
         TEMP_DATE = START_DATE + datetime.timedelta(days=day - 1)
+        
         CDS_DATE_STRING: str = f"{TEMP_DATE}/{TEMP_DATE}"
     
         try:
@@ -191,5 +195,62 @@ if __name__ == "__main__":
         except Exception as exception:
             error_message: str = (
                 "There was a problem retrieving data from the CDS API"
+                
             )
-            raise RuntimeError(error_message) from exception
+            
+    # -----------------------------
+    # Merge daily files -> monthly
+    # -----------------------------
+    out_dir = COMMAND_LINE.output_directory[0]
+    month_tag = f"{START_DATE.year}_{str(START_DATE.month).zfill(2)}"
+    daily_pattern = os.path.join(out_dir, f"GFAS_RAW_{month_tag}_*.nc")
+    daily_files = sorted(glob.glob(daily_pattern))
+
+    if not daily_files:
+        raise RuntimeError(f"No daily files found to merge: {daily_pattern}")
+
+    monthly_path = os.path.join(out_dir, f"GFAS_RAW_{month_tag}.nc")
+    logging.info("Merging %d daily files into %s", len(daily_files), monthly_path)
+
+    # Determine time dimension name (valid_time vs time)
+    with xr.open_dataset(daily_files[0], engine="netcdf4") as _ds0:
+        if "valid_time" in _ds0.dims:
+            time_dim = "valid_time"
+        elif "time" in _ds0.dims:
+            time_dim = "time"
+        else:
+            raise RuntimeError(
+                f"Could not find a time dimension in {daily_files[0]} "
+                "(expected 'valid_time' or 'time')."
+            )
+
+    # Concatenate in file order (your filenames include YYYY_MM_DD so sorting is correct)
+    ds = xr.open_mfdataset(
+        daily_files,
+        combine="nested",
+        concat_dim=time_dim,
+        coords="minimal",
+        data_vars="minimal",
+        compat="override",
+        parallel=False,
+        engine="netcdf4",
+    )
+
+    # Keep only your requested variables (optional, but keeps file clean)
+    keep_vars = [v for v in CDS_DATA_FIELDS if v in ds.data_vars]
+    missing = [v for v in CDS_DATA_FIELDS if v not in ds.data_vars]
+    if missing:
+        logging.warning("Some requested variables were not found in merged dataset: %s", missing)
+    ds = ds[keep_vars]
+
+    # Sort by time coordinate if present (extra safety)
+    if time_dim in ds.coords:
+        ds = ds.sortby(time_dim)
+
+    # Write compressed monthly output
+    encoding = {v: {"zlib": True, "complevel": 4} for v in ds.data_vars}
+    ds.to_netcdf(monthly_path, encoding=encoding)
+    ds.close()
+
+    logging.info("Monthly file written: %s", monthly_path)
+    logging.info("%s length = %s", time_dim, ds.sizes.get(time_dim, "unknown"))

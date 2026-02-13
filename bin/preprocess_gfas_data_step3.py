@@ -91,7 +91,7 @@ def process_time_dimension(output_dataset, input_dataset):
     output_time.long_name = "time"
     output_time.calendar = "gregorian"
 
-    time_list = np.ndarray.tolist(input_dataset.variables["time"][:] - 613608)
+    time_list = np.ndarray.tolist(input_dataset.variables["time"][:])
 
     output_time[:] = time_list
 
@@ -243,7 +243,7 @@ def main():
         sys.exit(1)
 
     date = datetime.datetime.fromtimestamp(
-        (input_dataset.variables["time"][5] - 613608) * 3600
+        (input_dataset.variables["time"][5]) * 3600
     )
     year = date.year
     month = date.month
@@ -252,7 +252,7 @@ def main():
     output_dataset.setncattr("conventions", "COARDS")
     output_dataset.setncattr(
         "history",
-        f"Created at {str(datetime.datetime.utcnow())} by WACL, University of York",
+        f"Created at {str(datetime.datetime.utcnow())} by Siyuan Shen, Washington University",
     )
 
     output_dataset.createDimension("lon", 3600)
