@@ -14,7 +14,6 @@ import logging
 import os
 
 
-
 def date_string(string: str) -> datetime.date:
     """
     Verify that a date string is in the correct format for selecting a year &
@@ -162,7 +161,7 @@ if __name__ == "__main__":
                         'time', np.int32, ('time',), zlib=True, chunksizes=(1,)
                     )
                     print('input_dataset.variables["valid_time"][:]', input_dataset.variables['valid_time'][:])
-                    time_var[0] = input_dataset.variables['valid_time'][0] / 3600  # Convert seconds to hours
+                    time_var[0] = input_dataset.variables['valid_time'][0] / 3600 - 24  # Convert seconds to hours; subtract 24h because valid_time is end-of-day
                     
                     print('time_var[0]', time_var[0])
                     print('time_var', time_var)
@@ -189,7 +188,7 @@ if __name__ == "__main__":
         # Now, add the daily data to the monthly totals
         with nc.Dataset(input_file_path, "r") as input_dataset:
             # compute time value for this day
-            t_hours = input_dataset.variables['valid_time'][0] / 3600.0
+            t_hours = input_dataset.variables['valid_time'][0] / 3600.0 - 24  # subtract 24h because valid_time is end-of-day
             with nc.Dataset(output_file_path, "a") as output_dataset:
                 if iday > 0:
                     output_dataset.variables['time'][iday] = t_hours
